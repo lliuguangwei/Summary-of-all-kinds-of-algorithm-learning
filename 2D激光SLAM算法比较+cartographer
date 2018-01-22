@@ -1,0 +1,73 @@
+原文网址：http://blog.csdn.net/u012700322/article/details/52953768
+
+Hector slam：
+Hector slam利用高斯牛顿方法解决scan-matching问题，对传感器要求较高。
+
+缺点：需要雷达（LRS）的更新频率较高，测量噪声小。所以在制图过程中，需要robot速度控制在比较低的情况下，建图效果才会比较理想，这也是它没有回环（loop close）的一个后遗症；且在里程计数据比较精确的时候，无法有效利用里程计信息。
+
+优点：不需要使用里程计，所以使得空中无人机及地面小车在不平坦区域建图存在运用的可行性；利用已经获得的地图对激光束点阵进行优化, 估计激光点在地图的表示,和占据网格的概率；利用高斯牛顿方法解决scan-matching 问题，获得激光点集映射到已有地图的刚体变换（x,y,theta）；为避免局部最小而非全局最优，使用多分辨率地图；导航中的状态估计加入惯性测量系统（IMU），利用EKF滤波；
+
+补充：11-11  hector_slam通过最小二乘法匹配扫描点，且依赖高精度的激光雷达数据，因此扫描角很小且噪声较大的Kinect是不行的，匹配时会陷入局部点，地图比较混乱。（作者这里试过Kinect，效果确实很差。如果有哪位朋友，利用Kinect能跑出来尚可的结果，请告知我学习一下，谢谢）
+
+gmapping：
+scanmatch方法：链接
+gmapping是目前应用最广的2D slam 方法，利用RBPF方法，故需要了解粒子滤波算法。scan-match方法在于估计机器人位置（pose），利用梯度下降的方法，在当前构建的地图，与当前的激光点，和机器人位置（pose）为初始估计值。
+
+粒子滤波的方法一般需要大量的粒子来获取好的结果,但这必会引入计算的复杂度;粒子是一个依据过程的观测逐渐更新权重与收敛的过程,这种重采样的过程必然会代入粒子耗散问题(depletion problem), 大权重粒子显著,小权重粒子会消失(有可能正确的粒子模拟可能在中间的阶段表现权重小而消失).自适应重采样技术引入减少了粒子耗散问题 , 计算粒子分布的时候不单单仅依靠机器人的运动(里程计),同时将当前观测考虑进去, 减少了机器人位置在粒子滤波步骤中的不确定性. (FAST-SLAM 2.0 的思想，可以适当减少粒子数)
+
+缺点：依赖里程计（odometry），无法适用无人机及地面小车不平坦区域；无回环；
+
+优点：在长廊及低特征场景中建图效果好；
+
+补充：（11-11）据说gmapping可以用Kinect转换出来的激光雷达数据建图，但是苦于没有里程计，所以没有尝试。（如果你有试过，请把结果告诉我，谢谢）
+
+实验表明：在大地图，低特征（distinctive landmarks）场景中，hector的建图误差高于gmapping。这是由于hector过分依赖scan-match。特别是在长廊问题中，误差更加明显。
+
+cartographer：
+cartographer是Google的实时室内建图项目，传感器安装在背包上面，可以生成分辨率为5cm的2D格网地图。
+
+获得的每一帧laser scan数据，利用scan match在最佳估计位置处插入子图（submap）中，且scan matching只跟当前submap有关。在生成一个submap后，会进行一次局部的回环（loop close），利用分支定位和预先计算的网格，所有submap完成后，会进行全局的回环。
+
+local 2D slam
+A.scans
+
+submap的构造是一个重复迭代配准scan和submap的过程。利用配准估算出pose对scan进行刚体变换，插入到submap中。
+
+B.submaps
+
+连续的scan用来构造submap，这里submap以概率格网的形式表现。每一个scan，在插入格网（submap）时，每一个grid有hits和miss两种情况。离scan终点最近的grid为hits，在scan原点和终点之间相交的grid为miss。之前未观察的grid分配一个概率，已观察的grid进行概率更新。
+
+
+
+C.Ceres scan matching
+
+把求pose的问题转换为一个求解非线性最小二乘问题，利用Ceres解决这个问题。
+
+因为最小二乘问题是一个局部最优问题，故一个好的初值（pose初值）对求解有很大影响。因此IMU能被用来提供pose初值的旋转变量。在缺乏IMU的时候，可以用提高scan match频率或匹配精度。
+
+closing loops
+利用SPA方法优化scan和submap的pose。存储插入scan位置处对应的pose用来做回环检测。此外，当submap不在变化时，对应pose的scan和submap也被用来做回环。scan match中找到的good match其对应的pose将被用来做优化问题。
+
+A.Optimization problem
+
+回环优化问题构造成非线性最小二乘问题，来求解。
+
+
+
+公式中分别为submap的pose，scan的pose，对应submap和scan的pose的相关性，及相关协方差矩阵。详见原文。
+
+B.Branch-and bround scan matching
+
+======  没有看懂  =======
+
+缺点：
+
+优点：不采用粒子滤波（PF），从而低廉设备也能获得较好的性能表现；
+
+
+参考资料：
+
+An evaluation of 2D SLAM techniques available in robot operating system -2013
+Improved Techniques for Grid mapping with Rao-Blackwellized Particle Filters -2007
+Real-Time Loop Closure in 2D LIDAR SLAM -2016
+http://rosclub.cn/post-183.html
